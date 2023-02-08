@@ -1,86 +1,151 @@
 import { useSignUp, useSignIn } from "@clerk/clerk-expo";
-import React from "react";
-import { Button, View } from "react-native";
+import React, { useState } from "react";
+import { Button, View, TextInput, Text } from "react-native";
 
 import * as AuthSession from "expo-auth-session";
+
+enum STEP {
+  SIGN_IN = "SIGN_IN",
+  VERIFY = "VERIFY",
+}
 
 const SignInWithOAuth = () => {
   const { isLoaded, signIn, setSession } = useSignIn();
   const { signUp } = useSignUp();
+
+  const [verifyType, setVerifyType] = useState<"sign-up" | "sign-in">(
+    "sign-up",
+  );
+
+  const [step, setStep] = useState(STEP.SIGN_IN);
+
+  const [email, setEmail] = useState("");
+
   if (!isLoaded) return null;
 
-  const handleSignInWithDiscordPress = async () => {
+  return (
+    <>
+      {step === STEP.SIGN_IN && (
+        <SignInForm
+          email={email}
+          setEmail={setEmail}
+          setStep={setStep}
+          setVerifyType={setVerifyType}
+        />
+      )}
+      {step === STEP.VERIFY && <VerifySignUpForm verifyType={verifyType} />}
+    </>
+  );
+};
+
+const VerifySignUpForm = ({
+  verifyType,
+}: {
+  verifyType: "sign-up" | "sign-in";
+}) => {
+  const { isLoaded: isSignInLoaded, setSession, signIn } = useSignIn();
+  const { isLoaded: isSignUpLoaded, signUp } = useSignUp();
+  const [code, setCode] = useState("");
+
+  if (!isSignInLoaded || !isSignUpLoaded) return null;
+
+  return (
+    <>
+      <TextInput
+        value={code}
+        onChangeText={setCode}
+        placeholder="123456"
+        className="rounded-lg border-2 border-gray-500 p-4"
+      />
+      <Button
+        title="Verify sign up"
+        // className="rounded-lg border-2 border-gray-500 p-4"
+        onPress={async () => {
+          try {
+            if (verifyType === "sign-up") {
+              const res = await signUp.attemptEmailAddressVerification({
+                code,
+              });
+              await setSession(res.createdSessionId);
+            } else {
+              const res = await signIn.attemptFirstFactor({
+                strategy: "email_code",
+                code,
+              });
+              await setSession(res.createdSessionId);
+            }
+          } catch (error) {
+            console.log(error);
+          }
+        }}
+      />
+    </>
+  );
+};
+
+const SignInForm = ({
+  email,
+  setEmail,
+  setStep,
+  setVerifyType,
+}: {
+  email: string;
+  setEmail: (email: string) => void;
+  setStep: (step: STEP) => void;
+  setVerifyType: (type: "sign-up" | "sign-in") => void;
+}) => {
+  const { isLoaded: isSignInLoaded, setSession, signIn } = useSignIn();
+  const { isLoaded: isSignUpLoaded, signUp } = useSignUp();
+
+  if (!isSignInLoaded || !isSignUpLoaded) return null;
+
+  const onSignIn = async () => {
     try {
-      const redirectUrl = AuthSession.makeRedirectUri({
-        path: "/oauth-native-callback",
+      const { supportedFirstFactors } = await signIn.create({
+        identifier: email,
       });
 
-      await signIn.create({
-        strategy: "oauth_discord",
-        redirectUrl,
+      console.log(supportedFirstFactors);
+
+      const firstEmailFactor = supportedFirstFactors.find((factor) => {
+        return factor.strategy === "email_code";
+      })!;
+
+      const { emailAddressId } = firstEmailFactor as any;
+
+      await signIn.prepareFirstFactor({
+        strategy: "email_code",
+        emailAddressId,
       });
-
-      const {
-        firstFactorVerification: { externalVerificationRedirectURL },
-      } = signIn;
-
-      if (!externalVerificationRedirectURL)
-        throw "Something went wrong during the OAuth flow. Try again.";
-
-      const authResult = await AuthSession.startAsync({
-        authUrl: externalVerificationRedirectURL.toString(),
-        returnUrl: redirectUrl,
-      });
-
-      if (authResult.type !== "success") {
-        throw "Something went wrong during the OAuth flow. Try again.";
+      setVerifyType("sign-in");
+    } catch (error: any) {
+      const errorCode = error.errors[0].code;
+      // User does not exist, create a new user
+      if (errorCode === "form_identifier_not_found") {
+        await signUp.create({ emailAddress: email });
+        await signUp.prepareEmailAddressVerification();
+        setVerifyType("sign-up");
       }
-
-      // Get the rotatingTokenNonce from the redirect URL parameters
-      const { rotating_token_nonce: rotatingTokenNonce } = authResult.params;
-
-      await signIn.reload({ rotatingTokenNonce });
-
-      const { createdSessionId } = signIn;
-
-      if (createdSessionId) {
-        // If we have a createdSessionId, then auth was successful
-        await setSession(createdSessionId);
-      } else {
-        // If we have no createdSessionId, then this is a first time sign-in, so
-        // we should process this as a signUp instead
-        // Throw if we're not in the right state for creating a new user
-        if (
-          !signUp ||
-          signIn.firstFactorVerification.status !== "transferable"
-        ) {
-          throw "Something went wrong during the Sign up OAuth flow. Please ensure that all sign up requirements are met.";
-        }
-
-        console.log(
-          "Didn't have an account transferring, following through with new account sign up",
-        );
-
-        // Create user
-        await signUp.create({ transfer: true });
-        await signUp.reload({
-          rotatingTokenNonce: authResult.params.rotating_token_nonce,
-        });
-        await setSession(signUp.createdSessionId);
-      }
-    } catch (err) {
-      console.log(JSON.stringify(err, null, 2));
-      console.log("error signing in", err);
+      console.log(error.errors);
+    } finally {
+      setStep(STEP.VERIFY);
     }
   };
 
   return (
-    <View className="rounded-lg border-2 border-gray-500 p-4">
-      <Button
-        title="Sign in with Discord"
-        onPress={handleSignInWithDiscordPress}
+    <>
+      <TextInput
+        value={email}
+        onChangeText={setEmail}
+        placeholder="example@email.com"
+        className="rounded-lg border-2 border-gray-500 p-4"
       />
-    </View>
+      <Button
+        title="Sign in with email"
+        // className="rounded-lg border-2 border-gray-500 p-4"
+        onPress={onSignIn}
+      />
+    </>
   );
 };
 
