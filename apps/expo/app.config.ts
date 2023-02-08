@@ -1,6 +1,7 @@
 import { ExpoConfig, ConfigContext } from "@expo/config";
 
-const CLERK_PUBLISHABLE_KEY = "your-clerk-publishable-key";
+const CLERK_PUBLISHABLE_KEY =
+  "pk_test_bGVnaWJsZS1idWctOTEuY2xlcmsuYWNjb3VudHMuZGV2JA";
 
 const defineConfig = (_ctx: ConfigContext): ExpoConfig => ({
   name: "expo",
@@ -32,8 +33,7 @@ const defineConfig = (_ctx: ConfigContext): ExpoConfig => ({
     eas: {
       projectId: "your-project-id",
     },
-    CLERK_PUBLISHABLE_KEY:
-      "pk_test_bGVnaWJsZS1idWctOTEuY2xlcmsuYWNjb3VudHMuZGV2JA",
+    CLERK_PUBLISHABLE_KEY,
   },
   plugins: ["./expo-plugins/with-modify-gradle.js"],
 });

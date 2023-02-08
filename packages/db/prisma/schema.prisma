@@ -11,8 +11,8 @@ datasource db {
     relationMode = "prisma"
 }
 
-model Post {
-    id      String @id @default(cuid())
-    title   String
-    content String
+model Location {
+    id       String @id @default(cuid())
+    name     String
+    distance Float
 }
